@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flappy Yomart</title>
+
+<link href="asset/bootstrap.min.css" rel="stylesheet">
+<script src="asset/sweetalert2@11.js"></script>
+
+<style>
+  body {
+    margin: 0;
+    background: #020617;
+    height: 100dvh;
+    overflow: hidden;
+    user-select: none;
+  }
+
+
+  /* wrapper biar desktop full */
+  #game {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(#38bdf8, #e0f2fe);
+    margin: auto;
+
+    /* MOBILE DEFAULT */
+    width: 100%;
+    max-width: 420px;
+    aspect-ratio: 9 / 16;
+  }
+
+  /* MOBILE LANDSCAPE */
+  @media (max-width: 1023px) and (orientation: landscape) {
+    #game {
+      max-width: 720px;
+      aspect-ratio: 16 / 9;
+    }
+  }
+
+  /* DESKTOP FULLSCREEN */
+  @media (min-width: 1024px) {
+    #game {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      aspect-ratio: auto;
+      border-radius: 0;
+    }
+  }
+
+  #bird {
+    width: 40px;
+    height: 40px;
+    position: absolute;
+    left: 60px;
+    top: 260px;
+    display: none;
+    background-image: url('img/bola.jpg'); /* path gambar burung */
+    background-size: cover;
+    background-position: center;
+    border-radius: 50%;
+  }
+
+
+  .pipe {
+    width:60px;
+    position:absolute;
+    background-size:cover;
+    background-position:center;
+  }
+
+
+  #overlay {
+    position:absolute;
+    inset:0;
+    background:rgba(2,6,23,.7);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    color:white;
+    z-index:10;
+  }
+
+  #countdown {
+    font-size:64px;
+    font-weight:bold;
+    display:none;
+  }
+
+  #hud {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    padding: 6px 12px;
+    font-weight: 700;
+    font-size: 14px;
+    color: #000;       /* teks hitam */
+    background: #fff;  /* solid putih */
+    border-radius: 999px;
+    z-index: 9999;     /* pastiin selalu di atas */
+    pointer-events: none;
+  }
+
+  #finish {
+    position:absolute;
+    width:40px;
+    height:100%;
+    top:0;
+    left:360px;
+    background:repeating-linear-gradient(
+      45deg,#000 0 10px,#fff 10px 20px
+    );
+    display:none;
+    z-index:4;
+  }
+</style>
+</head>
+
+<body>
+  <div id="hud">
+    <span id="meter">0 m</span>
+  </div>
+
+  <div id="game">
+    <div id="bird"></div>
+    <div id="finish"></div>
+    <div id="overlay">
+      <button id="startBtn" class="btn btn-warning btn-lg">MULAI</button>
+      <div id="countdown">3</div>
+    </div>
+  </div>
+</body>
+
+<script>
+/* =====================
+   STATE
+===================== */
+let birdY = 260;
+let velocity = 0;
+const gravity = 0.6;
+
+let distance = 0;
+const FINISH_DISTANCE = 1000;
+const SAFE_ZONE = 120; // jarak kosong sebelum finish (meter)
+
+let gameOver = true;
+let pipeInterval;
+let finishActive = false;
+let finishX = 360;
+
+/* =====================
+   ELEMENTS
+===================== */
+const bird = document.getElementById("bird");
+const game = document.getElementById("game");
+const finish = document.getElementById("finish");
+const meterEl = document.getElementById("meter");
+const overlay = document.getElementById("overlay");
+const startBtn = document.getElementById("startBtn");
+const countdownEl = document.getElementById("countdown");
+
+/* =====================
+   INPUT
+===================== */
+function flap() {
+  if (!gameOver) velocity = -8;
+}
+document.addEventListener("click", flap);
+document.addEventListener("keydown", e => e.code === "Space" && flap());
+document.addEventListener("touchstart", flap);
+
+/* =====================
+   START GAME
+===================== */
+startBtn.onclick = () => {
+  startBtn.style.display = "none";
+  countdownEl.style.display = "block";
+
+  let count = 3;
+  countdownEl.textContent = count;
+
+  const timer = setInterval(() => {
+    count--;
+    countdownEl.textContent = count;
+
+    if (count === 0) {
+      clearInterval(timer);
+      overlay.style.display = "none";
+      bird.style.display = "block";
+      gameOver = false;
+      pipeInterval = setInterval(spawnPipe, 1800);
+      loop();
+    }
+  }, 1000);
+};
+
+function getGameSize() {
+  const rect = game.getBoundingClientRect();
+  return {
+    width: rect.width,
+    height: rect.height
+  };
+}
+
+/* =====================
+   PIPE SPAWN (PRODUCT)
+===================== */
+function spawnPipe() {
+  if (gameOver) return;
+  if (distance >= FINISH_DISTANCE - SAFE_ZONE) return;
+
+  const gameRect = game.getBoundingClientRect();
+  const width = gameRect.width;
+  const height = gameRect.height;
+
+  const products = [
+    { name: "Susu Ultra", reward: "Susu Ultra", image: "img/susu.bmp" },
+    { name: "Teh Kotak", reward: "Teh Kotak", image: "img/teh-kotak.bmp" },
+    { name: "Teh Sosro", reward: "Teh Sosro", image: "img/sosro.bmp" }
+  ];
+
+  const topProduct = products[Math.floor(Math.random() * products.length)];
+  let bottomProduct = products[Math.floor(Math.random() * products.length)];
+  while (bottomProduct.name === topProduct.name) {
+    bottomProduct = products[Math.floor(Math.random() * products.length)];
+  }
+
+  const minGap = Math.max(height * 0.22, 140);
+  const gap = Math.random() * 60 + minGap;
+
+  const minPipe = 60;
+  const maxTop = height - gap - minPipe;
+  const topHeight = Math.random() * maxTop + minPipe;
+  const bottomHeight = height - topHeight - gap;
+
+  const topPipe = document.createElement("div");
+  const bottomPipe = document.createElement("div");
+
+  topPipe.className = "pipe";
+  topPipe.style.height = topHeight + "px";
+  topPipe.style.top = "0";
+  topPipe.style.backgroundImage = `url(${topProduct.image})`;
+  topPipe.style.transform = "rotate(180deg)";
+  topPipe.style.willChange = "transform";
+
+  bottomPipe.className = "pipe";
+  bottomPipe.style.height = bottomHeight + "px";
+  bottomPipe.style.bottom = "0";
+  bottomPipe.style.backgroundImage = `url(${bottomProduct.image})`;
+  bottomPipe.style.willChange = "transform";
+
+  game.append(topPipe, bottomPipe);
+
+  let x = width;
+  const speed = width > 800 ? 3 : 2;
+
+  function animatePipe() {
+    if (gameOver) return;
+
+    x -= speed;
+    topPipe.style.transform = `translateX(${x}px) rotate(180deg)`;
+    bottomPipe.style.transform = `translateX(${x}px)`;
+
+    if (x < -120) {
+      topPipe.remove();
+      bottomPipe.remove();
+      return;
+    }
+
+    const b = bird.getBoundingClientRect();
+    const t = topPipe.getBoundingClientRect();
+    const bo = bottomPipe.getBoundingClientRect();
+
+    // Deteksi tabrakan
+    if (b.left < t.right && b.right > t.left && b.top < t.bottom) {
+        hitPipe(topProduct);
+        return;
+    }
+    if (b.left < bo.right && b.right > bo.left && b.bottom > bo.top) {
+        hitPipe(bottomProduct);
+        return;
+    }
+
+    // Tandai pipa terakhir yang dilewati
+    if (b.left > t.right && !topPipe.passed) {
+        topPipe.passed = true;
+        lastPassedProduct = topProduct;
+    }
+    if (b.left > bo.right && !bottomPipe.passed) {
+        bottomPipe.passed = true;
+        lastPassedProduct = bottomProduct;
+    }
+
+    requestAnimationFrame(animatePipe);
+  }
+
+  requestAnimationFrame(animatePipe);
+}
+
+function hitPipe(product) {
+  gameOver = true;
+  clearInterval(pipeInterval);
+
+  Swal.fire({
+    title: "Selamat",
+    html: `
+      Hadiah kamu: <b>${product.reward}</b>
+    `,
+    icon: "success",
+    confirmButtonText: "Konfirmasi"
+  }).then(() => location.reload());
+}
+
+/* =====================
+   FINISH LINE
+===================== */
+function activateFinish() {
+  finishActive = true;
+  finish.style.display = "block";
+  finishX = 360;
+}
+
+/* =====================
+   WIN
+===================== */
+function winGame() {
+  gameOver = true;
+  clearInterval(pipeInterval);
+
+  Swal.fire({
+    title: "Kamu Berhasil!",
+    text: "Kamu Mendapatkan Hadiah Utama!",
+    icon: "success",
+    confirmButtonText: "Konfirmasi",
+    allowOutsideClick: false
+  }).then(() => location.reload());
+}
+
+function loop() {
+  if (gameOver) return;
+
+  const { height, width } = game.getBoundingClientRect();
+  const birdSize = bird.offsetHeight;
+
+  // physics
+  velocity += gravity;
+  birdY += velocity;
+  bird.style.top = birdY + "px";
+
+  // meter
+  distance += 0.25;
+  meterEl.textContent = Math.floor(distance) + " m";
+
+  // activate finish
+  if (distance >= FINISH_DISTANCE && !finishActive) {
+    activateFinish();
+  }
+
+  // move finish line
+  if (finishActive) {
+    finishX -= width > 800 ? 3 : 2;
+    finish.style.left = finishX + "px";
+
+    const b = bird.getBoundingClientRect();
+    const f = finish.getBoundingClientRect();
+
+    if (b.right >= f.left) {
+      winGame();
+      return;
+    }
+  }
+
+  // batas atas
+  if (birdY < 0) {
+    location.reload();
+    return;
+  }
+
+  // batas bawah -> tampilkan hadiah di bawah
+  if (birdY > height - birdSize) {
+    gameOver = true;
+    Swal.fire({
+      title: "Kamu Jatuh!",
+      html: `Kamu mendapatkan: <b>${lastPassedProduct.reward}</b>`,
+      icon: "success",
+      confirmButtonText: "Konfirmasi"
+    }).then(() => location.reload());
+    return;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+
+</script>
+
+</html>
